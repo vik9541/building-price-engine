@@ -1,1 +1,8 @@
-# Backup of models.py before competitive analysis additions
+# Extended models added to models.py:
+# See models_extended.py for price monitoring models:
+# - PriceSnapshot
+# - PriceSource
+# - ProductSourceMapping
+# - MarketAnalysis
+# - PriceAlert
+# - CompetitorPriceRanking
