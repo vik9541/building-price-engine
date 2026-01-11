@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: building_db
+    environment:
+      POSTGRES_DB: building_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: building_cache
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: building_backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/building_db
+      REDIS_URL: redis://redis:6379/0
+      DEBUG: "True"
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: building_celery
+    command: celery -A app.tasks worker --loglevel=info --concurrency=4
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/building_db
+      REDIS_URL: redis://redis:6379/0
+      DEBUG: "False"
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+      - backend
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: building_celery_beat
+    command: celery -A app.tasks beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      DATABASE_URL: postgresql://user:password@postgres:5432/building_db
+      REDIS_URL: redis://redis:6379/0
+      DEBUG: "False"
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+      - backend
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: building_network
